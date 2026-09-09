@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watchlist — DEGIRO Portfolio</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            font-size: 14px;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 { color: #2d3748; font-size: 1.8em; margin-bottom: 8px; }
+        .subtitle { color: #718096; font-size: 0.95em; }
+        .subtitle a { color: #667eea; text-decoration: none; font-weight: 600; margin-right: 12px; }
+        .subtitle a:hover { text-decoration: underline; }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4); }
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+            box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);
+        }
+
+        #sync-status { color: #718096; font-size: 0.85em; margin-left: 12px; }
+
+        .error {
+            background: #fc8181; color: white; padding: 15px; border-radius: 10px;
+            margin-bottom: 20px; text-align: center; font-size: 0.9em; display: none;
+        }
+
+        .panel {
+            background: white; padding: 20px; border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); margin-bottom: 16px;
+        }
+        .panel h2 { color: #2d3748; font-size: 1.1em; margin-bottom: 14px; }
+
+        .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 10px; }
+        .form-field { display: flex; flex-direction: column; gap: 4px; }
+        .form-field label { color: #718096; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.03em; }
+        .form-field input {
+            padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.9em; min-width: 140px;
+        }
+
+        table { border-collapse: collapse; width: 100%; }
+        th {
+            text-align: left; padding: 10px 14px; color: #718096; font-size: 0.75em;
+            text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 2px solid #edf2f7;
+        }
+        td { padding: 10px 14px; border-bottom: 1px solid #edf2f7; color: #2d3748; font-size: 0.9em; }
+        tr:last-child td { border-bottom: none; }
+        .remove-link { color: #c53030; cursor: pointer; font-size: 0.85em; text-decoration: none; }
+        .remove-link:hover { text-decoration: underline; }
+        .empty-state { color: #718096; text-align: center; padding: 30px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>Watchlist</h1>
+            <div class="subtitle">
+                <a href="/">&larr; core dashboard</a>
+                <a href="/personal">Sectorweging</a>
+            </div>
+        </div>
+        <div>
+            <button class="btn" id="sync-btn">Sync fundamentals (Yahoo)</button>
+            <button class="btn" id="sync-price-btn">Sync prijshistorie (Yahoo)</button>
+            <span id="sync-status"></span>
+        </div>
+    </header>
+
+    <div class="error" id="error-box"></div>
+
+    <div class="panel">
+        <h2>Aandeel toevoegen</h2>
+        <div class="form-row">
+            <div class="form-field"><label>ISIN</label><input id="add-isin" placeholder="US0378331005"></div>
+            <div class="form-field"><label>Naam</label><input id="add-name" placeholder="Apple Inc"></div>
+            <div class="form-field"><label>Valuta</label><input id="add-currency" placeholder="USD" value="EUR"></div>
+            <div class="form-field"><label>Notitie (optioneel)</label><input id="add-note" placeholder="waarom volg je dit?"></div>
+            <button class="btn" id="add-btn">Toevoegen</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Filter</h2>
+        <div class="form-row">
+            <div class="form-field"><label>P/E onder</label><input id="f-pe-below" type="number" step="0.1"></div>
+            <div class="form-field"><label>Dividend yield boven (%)</label><input id="f-div-above" type="number" step="0.1"></div>
+            <div class="form-field"><label>Market cap boven (mld €)</label><input id="f-mcap-above" type="number" step="0.1"></div>
+            <div class="form-field"><label>Koersdaling minstens (%)</label><input id="f-drop-above" type="number" step="1"></div>
+            <div class="form-field"><label>Koersstijging minstens (%)</label><input id="f-momentum-above" type="number" step="1"></div>
+            <div class="form-field"><label>Periode (dagen)</label><input id="f-price-days" type="number" step="1" value="30" style="min-width:70px;"></div>
+            <button class="btn" id="filter-btn">Filteren</button>
+            <button class="btn" id="reset-btn" style="background:#a0aec0;">Reset</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <table id="watchlist-table"></table>
+        <div class="empty-state" id="empty-state" style="display:none;">Nog geen aandelen op de watchlist.</div>
+    </div>
+</div>
+
+    <script>
+        function showError(context, err) {
+            console.error(context, err);
+            const box = document.getElementById('error-box');
+            box.style.display = 'block';
+            box.textContent = `Fout bij ${context}: ${err.message || err}`;
+        }
+
+        function renderTable(rows) {
+            const table = document.getElementById('watchlist-table');
+            const empty = document.getElementById('empty-state');
+            if (!rows.length) {
+                table.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            table.innerHTML = '<tr><th>Naam</th><th>Ticker</th><th>Prijs</th><th>P/E</th>' +
+                '<th>Dividend yield</th><th>Market cap</th><th>Koersverandering</th><th>Notitie</th><th></th></tr>' +
+                rows.map(r => `<tr>
+                    <td>${r.name}</td>
+                    <td>${r.ticker}</td>
+                    <td>${r.price != null ? r.price.toLocaleString('nl-NL') + ' ' + (r.currency || '') : '—'}</td>
+                    <td>${r.pe_ratio != null ? r.pe_ratio.toFixed(1) : '—'}</td>
+                    <td>${r.dividend_yield != null ? (r.dividend_yield * 100).toFixed(2) + '%' : '—'}</td>
+                    <td>${r.market_cap != null ? (r.market_cap / 1e9).toFixed(1) + ' mld' : '—'}</td>
+                    <td style="${r.price_change_pct != null && r.price_change_pct < 0 ? 'color:#c53030;' : r.price_change_pct != null ? 'color:#2f855a;' : ''}">${r.price_change_pct != null ? (r.price_change_pct > 0 ? '+' : '') + r.price_change_pct.toFixed(1) + '%' : '—'}</td>
+                    <td>${r.note || ''}</td>
+                    <td><a class="remove-link" data-id="${r.id}">verwijderen</a></td>
+                </tr>`).join('');
+
+            table.querySelectorAll('.remove-link').forEach(link => {
+                link.addEventListener('click', async () => {
+                    try {
+                        const res = await fetch(`/api/personal/watchlist/${link.dataset.id}`, { method: 'DELETE' });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        loadWatchlist();
+                    } catch (err) {
+                        showError('verwijderen', err);
+                    }
+                });
+            });
+        }
+
+        async function loadWatchlist() {
+            try {
+                const res = await fetch('/api/personal/watchlist');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const { watchlist } = await res.json();
+                renderTable(watchlist);
+            } catch (err) {
+                showError('ophalen van de watchlist', err);
+            }
+        }
+
+        document.getElementById('add-btn').addEventListener('click', async () => {
+            const isin = document.getElementById('add-isin').value.trim();
+            const name = document.getElementById('add-name').value.trim();
+            const currency = document.getElementById('add-currency').value.trim() || 'EUR';
+            const note = document.getElementById('add-note').value.trim();
+            if (!isin || !name) { showError('toevoegen', new Error('ISIN en naam zijn verplicht')); return; }
+            try {
+                const res = await fetch('/api/personal/watchlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isin, name, currency, note: note || null }),
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.detail || `HTTP ${res.status}`);
+                }
+                document.getElementById('add-isin').value = '';
+                document.getElementById('add-name').value = '';
+                document.getElementById('add-note').value = '';
+                loadWatchlist();
+            } catch (err) {
+                showError('toevoegen aan watchlist', err);
+            }
+        });
+
+        document.getElementById('filter-btn').addEventListener('click', async () => {
+            const params = new URLSearchParams();
+            const pe = document.getElementById('f-pe-below').value;
+            const div = document.getElementById('f-div-above').value;
+            const mcap = document.getElementById('f-mcap-above').value;
+            const drop = document.getElementById('f-drop-above').value;
+            const momentum = document.getElementById('f-momentum-above').value;
+            const days = document.getElementById('f-price-days').value || 30;
+            if (pe) params.set('pe_below', pe);
+            if (div) params.set('dividend_yield_above', (parseFloat(div) / 100).toString());
+            if (mcap) params.set('market_cap_above', (parseFloat(mcap) * 1e9).toString());
+            if (drop) params.set('price_drop_pct_above', drop);
+            if (momentum) params.set('momentum_pct_above', momentum);
+            params.set('price_change_days', days);
+            try {
+                const res = await fetch(`/api/personal/watchlist/filter?${params}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const { watchlist } = await res.json();
+                renderTable(watchlist);
+            } catch (err) {
+                showError('filteren', err);
+            }
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            document.getElementById('f-pe-below').value = '';
+            document.getElementById('f-div-above').value = '';
+            document.getElementById('f-mcap-above').value = '';
+            document.getElementById('f-drop-above').value = '';
+            document.getElementById('f-momentum-above').value = '';
+            document.getElementById('f-price-days').value = '30';
+            loadWatchlist();
+        });
+
+        document.getElementById('sync-btn').addEventListener('click', async () => {
+            const status = document.getElementById('sync-status');
+            status.textContent = 'bezig... (kan even duren door Yahoo rate-limit)';
+            try {
+                const res = await fetch('/api/personal/watchlist/sync-fundamentals', { method: 'POST' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                status.textContent = `klaar: ${data.updated} bijgewerkt, ${data.skipped} overgeslagen, ${data.failed} mislukt`;
+                loadWatchlist();
+            } catch (err) {
+                status.textContent = '';
+                showError('synchroniseren van fundamentals', err);
+            }
+        });
+
+        document.getElementById('sync-price-btn').addEventListener('click', async () => {
+            const status = document.getElementById('sync-status');
+            status.textContent = 'prijshistorie ophalen... (kan even duren)';
+            try {
+                const res = await fetch('/api/personal/watchlist/sync-price-history?days=90', { method: 'POST' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                status.textContent = `klaar: ${data.updated} bijgewerkt, ${data.skipped} overgeslagen, ${data.failed} mislukt`;
+                loadWatchlist();
+            } catch (err) {
+                status.textContent = '';
+                showError('synchroniseren van prijshistorie', err);
+            }
+        });
+
+        loadWatchlist();
+    </script>
+</body>
+</html>
