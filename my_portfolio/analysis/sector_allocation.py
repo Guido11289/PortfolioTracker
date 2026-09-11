@@ -125,7 +125,7 @@ def compute_sector_allocation(core_db: Session, personal_db: Session, scope: str
         currency = price_record.currency or stock.currency
         rate = exchange_rates_map.get(currency, _get_fallback_rate(currency))
         scaled = price_record.close * price_scales.get(stock.id, 1.0)
-        value_eur = int(qty) * scaled * rate
+        value_eur = qty * scaled * rate
         total_value += value_eur
 
         fund_weights = fund_weights_by_stock_id.get(stock.id)
@@ -137,7 +137,15 @@ def compute_sector_allocation(core_db: Session, personal_db: Session, scope: str
                     sector_stock_names[sector].append(stock.name)
         else:
             # Los aandeel (of nog geen data): 100% naar één sector.
-            sector = sector_by_stock_id.get(stock.id) or UNKNOWN_SECTOR
+            # Crypto heeft geen GICS-sector bij Yahoo (info["sector"]
+            # ontbreekt voor CRYPTOCURRENCY-quotes) — dat weten we al aan
+            # de synthetische "CRYPTO:"-ISIN (zie Config._fix_crypto_rows
+            # in degiro_portfolio), dus geef het een eigen label i.p.v.
+            # het generieke Unknown.
+            if stock.isin and stock.isin.startswith("CRYPTO:"):
+                sector = "Crypto"
+            else:
+                sector = sector_by_stock_id.get(stock.id) or UNKNOWN_SECTOR
             sector_totals[sector] += value_eur
             sector_stock_names[sector].append(stock.name)
 
