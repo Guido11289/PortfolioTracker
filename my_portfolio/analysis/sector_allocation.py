@@ -58,11 +58,15 @@ def compute_sector_allocation(core_db: Session, personal_db: Session, scope: str
 
     all_stock_ids = [stock.id for stock, _ in holdings_query]
 
+    # Altijd ophalen (niet alleen bij scope-filtering) — ook nodig om
+    # crypto (quote_type == CRYPTOCURRENCY) een eigen sectorlabel te geven,
+    # ongeacht scope.
+    quote_type_by_stock_id = {
+        t.stock_id: t.quote_type
+        for t in personal_db.query(StockInstrumentType).filter(StockInstrumentType.stock_id.in_(all_stock_ids))
+    }
+
     if scope != "all":
-        quote_type_by_stock_id = {
-            t.stock_id: t.quote_type
-            for t in personal_db.query(StockInstrumentType).filter(StockInstrumentType.stock_id.in_(all_stock_ids))
-        }
         if scope == "etfs":
             holdings_query = [
                 (s, q) for s, q in holdings_query
@@ -138,11 +142,15 @@ def compute_sector_allocation(core_db: Session, personal_db: Session, scope: str
         else:
             # Los aandeel (of nog geen data): 100% naar één sector.
             # Crypto heeft geen GICS-sector bij Yahoo (info["sector"]
-            # ontbreekt voor CRYPTOCURRENCY-quotes) — dat weten we al aan
-            # de synthetische "CRYPTO:"-ISIN (zie Config._fix_crypto_rows
-            # in degiro_portfolio), dus geef het een eigen label i.p.v.
-            # het generieke Unknown.
-            if stock.isin and stock.isin.startswith("CRYPTO:"):
+            # ontbreekt voor CRYPTOCURRENCY-quotes). We herkennen crypto
+            # op twee manieren (eerste die matcht wint):
+            #  1. Yahoo's eigen quoteType == "CRYPTOCURRENCY" (autoritatief,
+            #     maar vereist dat "Sync sector-data" al gedraaid heeft)
+            #  2. onze synthetische "CRYPTO:"-ISIN uit Config._fix_crypto_rows
+            #     (beschikbaar direct na import, nog vóór een sync)
+            if quote_type_by_stock_id.get(stock.id) == "CRYPTOCURRENCY" or (
+                stock.isin and stock.isin.startswith("CRYPTO:")
+            ):
                 sector = "Crypto"
             else:
                 sector = sector_by_stock_id.get(stock.id) or UNKNOWN_SECTOR

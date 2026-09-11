@@ -50,16 +50,49 @@ class SectorInfo(TypedDict):
     industry: Optional[str]
 
 
-def fetch_sector_info(ticker: str) -> SectorInfo:
-    """Sector/industrie voor een gewoon aandeel (niet voor ETF's/funds —
-    zie fetch_fund_sector_weights daarvoor)."""
+def _verified_ticker(ticker: str):
+    """Eén yf.Ticker-object opbouwen én verifiëren dat Yahoo's info ook
+    echt over DIT ticker gaat, voor we er iets van vertrouwen.
+
+    Reden: we zagen in de praktijk dat twee compleet verschillende ETF's
+    (Vanguard S&P 500 en iShares AEX) tijdens dezelfde sync-run tot op de
+    decimal IDENTIEKE sector_weightings kregen — dat kan geen toeval zijn,
+    dat is Yahoo/yfinance die data van het verkeerde ticker teruggeeft bij
+    opeenvolgende aanroepen (bekend yfinance-gedrag, geen bug in onze eigen
+    query-logica). Vandaar: nooit meer data vertrouwen zonder eerst
+    info['symbol'] te checken tegen wat we hebben opgevraagd.
+
+    Geeft (ticker_obj, info) terug bij een geverifieerde match, anders
+    (None, {}).
+    """
     import yfinance as yf
 
     yahoo_rate_limiter.wait_if_needed()
+    t = yf.Ticker(ticker)
     try:
-        info = yf.Ticker(ticker).info
+        info = t.info
     except Exception as e:
-        logger.warning("Kon sector-info niet ophalen voor %s: %s", ticker, e)
+        logger.warning("Kon info niet ophalen voor %s: %s", ticker, e)
+        return None, {}
+
+    returned_symbol = str(info.get("symbol") or "").upper()
+    if returned_symbol and returned_symbol != ticker.upper():
+        logger.error(
+            "Yahoo gaf data voor '%s' terug terwijl '%s' was opgevraagd — "
+            "genegeerd (bekende yfinance/Yahoo dataverwisseling bij "
+            "opeenvolgende Ticker-aanroepen, niet stil vertrouwd).",
+            returned_symbol, ticker,
+        )
+        return None, {}
+
+    return t, info
+
+
+def fetch_sector_info(ticker: str) -> SectorInfo:
+    """Sector/industrie voor een gewoon aandeel (niet voor ETF's/funds —
+    zie fetch_fund_sector_weights daarvoor)."""
+    _t, info = _verified_ticker(ticker)
+    if not info:
         return {"sector": None, "industry": None}
 
     return {"sector": info.get("sector"), "industry": info.get("industry")}
@@ -70,11 +103,12 @@ def fetch_fund_sector_weights(ticker: str) -> dict:
     als het instrument geen fund-sectordata heeft — logt in beide gevallen
     WAAROM, want stil {} teruggeven maakt "geen data bij Yahoo" en "een bug"
     onmogelijk uit elkaar te houden."""
-    import yfinance as yf
+    t, info = _verified_ticker(ticker)
+    if t is None:
+        return {}
 
-    yahoo_rate_limiter.wait_if_needed()
     try:
-        raw_weights = yf.Ticker(ticker).funds_data.sector_weightings
+        raw_weights = t.funds_data.sector_weightings
     except Exception as e:
         logger.warning("Kon fund-sectorweging niet ophalen voor %s: %s", ticker, e)
         return {}
@@ -105,11 +139,12 @@ def fetch_fund_top_holdings(ticker: str) -> list:
     Andere databron dan sector_weightings (aparte Yahoo-velden, apart
     gevuld) — dit is dus een écht onafhankelijke fallback, geen herhaling
     van dezelfde lege data."""
-    import yfinance as yf
+    t, info = _verified_ticker(ticker)
+    if t is None:
+        return []
 
-    yahoo_rate_limiter.wait_if_needed()
     try:
-        df = yf.Ticker(ticker).funds_data.top_holdings
+        df = t.funds_data.top_holdings
     except Exception as e:
         logger.warning("Kon top_holdings niet ophalen voor %s: %s", ticker, e)
         return []
@@ -168,8 +203,6 @@ def sync_sector_metadata(core_db, personal_db, force: bool = False) -> dict:
     `core_db` / `personal_db` zijn losse sessies (core-modellen resp.
     personal-modellen) — zie api/sector.py voor hoe ze binnenkomen.
     """
-    import yfinance as yf
-
     from degiro_portfolio.database import Stock
     from ..models import StockMetadata, StockSectorWeight, StockInstrumentType
 
@@ -195,11 +228,8 @@ def sync_sector_metadata(core_db, personal_db, force: bool = False) -> dict:
             failed += 1
             continue
 
-        yahoo_rate_limiter.wait_if_needed()
-        try:
-            info = yf.Ticker(stock.yahoo_ticker).info
-        except Exception as e:
-            logger.warning("Kon quoteType niet bepalen voor %s: %s", stock.yahoo_ticker, e)
+        t, info = _verified_ticker(stock.yahoo_ticker)
+        if t is None:
             failed += 1
             continue
 
