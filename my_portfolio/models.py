@@ -139,3 +139,43 @@ class WatchlistStockPrice(Base):
 
     def __repr__(self) -> str:
         return f"<WatchlistStockPrice watchlist_stock_id={self.watchlist_stock_id} {self.date}={self.close}>"
+
+
+class DividendPayment(Base):
+    """Eén ontvangen dividenduitkering per aandeel (holdings, niet
+    watchlist — zie data/dividends.py). Net als StockMetadata een plain
+    int-koppeling naar core `stocks.id`, geen ForeignKey (zelfde
+    §16-afweging: geen cross-Base FK-reflectie voor dit veld)."""
+
+    __tablename__ = "personal_dividend_payment"
+    __table_args__ = (UniqueConstraint("stock_id", "payment_date", name="uq_personal_dividend_payment_stock_date"),)
+
+    id = Column(Integer, primary_key=True)
+    stock_id = Column(Integer, nullable=False, index=True)
+    payment_date = Column(DateTime, nullable=False, index=True)
+    amount_per_share = Column(Float, nullable=False)  # in `currency`
+    currency = Column(String, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<DividendPayment stock_id={self.stock_id} {self.payment_date}={self.amount_per_share}>"
+
+
+class StockDividendInfo(Base):
+    """Laatst bekende (trailing) dividend_yield per aandeel, los van de
+    uitkeringshistorie in DividendPayment — nodig voor
+    estimate_upcoming_annual_dividend() (yield x huidige waarde). Zelfde
+    patroon als StockInstrumentType: één scalar-waarde per stock_id, altijd
+    overschreven bij een sync, ongeacht of de uitkeringshistorie zelf iets
+    opleverde."""
+
+    __tablename__ = "personal_stock_dividend_info"
+    __table_args__ = (UniqueConstraint("stock_id", name="uq_personal_stock_dividend_info_stock_id"),)
+
+    id = Column(Integer, primary_key=True)
+    stock_id = Column(Integer, nullable=False, index=True)
+    dividend_yield = Column(Float, nullable=True)  # fractie, bv. 0.021 = 2.1%
+    currency = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self) -> str:
+        return f"<StockDividendInfo stock_id={self.stock_id} yield={self.dividend_yield}>"

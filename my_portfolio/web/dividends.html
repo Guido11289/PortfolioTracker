@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dividenden — DEGIRO Portfolio</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            font-size: 14px;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        h1 { color: #2d3748; font-size: 1.8em; margin-bottom: 8px; }
+        .subtitle { color: #718096; font-size: 0.95em; }
+        .subtitle a { color: #667eea; text-decoration: none; font-weight: 600; margin-right: 12px; }
+        .subtitle a:hover { text-decoration: underline; }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4); }
+
+        #sync-status { color: #718096; font-size: 0.85em; margin-left: 12px; }
+
+        .error {
+            background: #fc8181; color: white; padding: 15px; border-radius: 10px;
+            margin-bottom: 20px; text-align: center; font-size: 0.9em; display: none;
+        }
+
+        .cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px; }
+        .card {
+            background: white; padding: 20px; border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        .card .label { color: #718096; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+        .card .value { color: #2d3748; font-size: 1.6em; font-weight: 700; }
+        .card select {
+            margin-top: 8px; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.85em;
+        }
+
+        .panel {
+            background: white; padding: 20px; border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); margin-bottom: 16px; overflow-x: auto;
+        }
+        .panel h2 { color: #2d3748; font-size: 1.1em; margin-bottom: 14px; }
+
+        table { border-collapse: collapse; width: 100%; }
+        th {
+            text-align: left; padding: 10px 14px; color: #718096; font-size: 0.75em;
+            text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 2px solid #edf2f7;
+        }
+        td { padding: 10px 14px; border-bottom: 1px solid #edf2f7; color: #2d3748; font-size: 0.9em; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { color: #718096; text-align: center; padding: 30px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>Dividenden</h1>
+            <div class="subtitle">
+                <a href="/">&larr; core dashboard</a>
+                <a href="/personal">Sectorweging</a>
+                <a href="/watchlist">Watchlist</a>
+            </div>
+        </div>
+        <div>
+            <button class="btn" id="sync-btn">Sync dividenden (Yahoo)</button>
+            <span id="sync-status"></span>
+        </div>
+    </header>
+
+    <div class="error" id="error-box"></div>
+
+    <div class="cards-row">
+        <div class="card">
+            <div class="label">Jaartotaal ontvangen</div>
+            <div class="value" id="annual-total">€ —</div>
+            <select id="year-select"></select>
+        </div>
+        <div class="card">
+            <div class="label">Geschat, komend jaar (huidige holdings)</div>
+            <div class="value" id="estimate-total">€ —</div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Schatting per holding</h2>
+        <table id="estimate-table"></table>
+        <div class="empty-state" id="estimate-empty" style="display:none;">Nog geen yield-data — draai eerst een sync.</div>
+    </div>
+
+    <div class="panel">
+        <h2>Uitkeringen</h2>
+        <table id="calendar-table"></table>
+        <div class="empty-state" id="calendar-empty" style="display:none;">Geen uitkeringen voor dit jaar.</div>
+    </div>
+</div>
+
+    <script>
+        function showError(context, err) {
+            console.error(context, err);
+            const box = document.getElementById('error-box');
+            box.style.display = 'block';
+            box.textContent = `Fout bij ${context}: ${err.message || err}`;
+        }
+
+        function fmtEur(v) {
+            return v == null ? '€ —' : '€ ' + v.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function populateYearSelect() {
+            const select = document.getElementById('year-select');
+            const nowYear = new Date().getFullYear();
+            select.innerHTML = '';
+            for (let y = nowYear; y >= nowYear - 9; y--) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                select.appendChild(opt);
+            }
+            select.value = nowYear;
+        }
+
+        async function loadAnnualTotal() {
+            const year = document.getElementById('year-select').value;
+            const res = await fetch(`/api/personal/dividend-annual-total?year=${year}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status} op dividend-annual-total`);
+            const data = await res.json();
+            document.getElementById('annual-total').textContent = fmtEur(data.total_eur);
+        }
+
+        async function loadCalendar() {
+            const year = document.getElementById('year-select').value;
+            const res = await fetch(`/api/personal/dividend-calendar?year=${year}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status} op dividend-calendar`);
+            const { payments } = await res.json();
+            const table = document.getElementById('calendar-table');
+            const empty = document.getElementById('calendar-empty');
+            if (!payments.length) {
+                table.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            table.innerHTML = '<tr><th>Datum</th><th>Aandeel</th><th>Per aandeel</th><th>Aantal</th><th>Bedrag (EUR)</th></tr>' +
+                payments.map(p => `<tr>
+                    <td>${p.payment_date.slice(0, 10)}</td>
+                    <td>${p.name}</td>
+                    <td>${p.amount_per_share.toFixed(4)} ${p.currency || ''}</td>
+                    <td>${p.quantity_held}</td>
+                    <td>${fmtEur(p.amount_eur)}</td>
+                </tr>`).join('');
+        }
+
+        async function loadEstimate() {
+            const res = await fetch('/api/personal/dividend-estimate');
+            if (!res.ok) throw new Error(`HTTP ${res.status} op dividend-estimate`);
+            const { estimates, total_estimated_eur } = await res.json();
+            document.getElementById('estimate-total').textContent = fmtEur(total_estimated_eur);
+
+            const table = document.getElementById('estimate-table');
+            const empty = document.getElementById('estimate-empty');
+            if (!estimates.length) {
+                table.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            table.innerHTML = '<tr><th>Aandeel</th><th>Yield</th><th>Huidige waarde</th><th>Geschat/jaar</th></tr>' +
+                estimates.map(e => `<tr>
+                    <td>${e.name}</td>
+                    <td>${(e.dividend_yield * 100).toFixed(2)}%</td>
+                    <td>${fmtEur(e.current_value_eur)}</td>
+                    <td>${fmtEur(e.estimated_annual_dividend_eur)}</td>
+                </tr>`).join('');
+        }
+
+        async function loadAll() {
+            try {
+                await Promise.all([loadAnnualTotal(), loadCalendar()]);
+            } catch (err) {
+                showError('ophalen van de dividendkalender', err);
+            }
+            try {
+                await loadEstimate();
+            } catch (err) {
+                showError('ophalen van de schatting', err);
+            }
+        }
+
+        document.getElementById('year-select').addEventListener('change', async () => {
+            try {
+                await Promise.all([loadAnnualTotal(), loadCalendar()]);
+            } catch (err) {
+                showError('ophalen van de dividendkalender', err);
+            }
+        });
+
+        document.getElementById('sync-btn').addEventListener('click', async () => {
+            const status = document.getElementById('sync-status');
+            status.textContent = 'bezig... (kan even duren door Yahoo rate-limit)';
+            try {
+                const res = await fetch('/api/personal/sync-dividends?force=true', { method: 'POST' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                status.textContent = `klaar: ${data.updated} bijgewerkt, ${data.skipped} overgeslagen, ${data.failed} mislukt`;
+                loadAll();
+            } catch (err) {
+                status.textContent = '';
+                showError('synchroniseren van dividenden', err);
+            }
+        });
+
+        populateYearSelect();
+        loadAll();
+    </script>
+</body>
+</html>
