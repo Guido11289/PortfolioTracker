@@ -43,15 +43,35 @@ pip install -r requirements.txt
 `degiro_portfolio` staat vastgepind op **0.5.13**: de patches in stap 4 zijn
 daartegen gemaakt. Niet upgraden zonder de patches opnieuw te beoordelen.
 
-### 4. Library-patches toepassen
+### 4. Library-patches toepassen (verplicht vóór het eerste gebruik)
 
-De geïnstalleerde library moet op een aantal plekken aangepast worden.
-Alles staat als diff in [`docs/LIBRARY_CHANGES.md`](docs/LIBRARY_CHANGES.md).
-Doorloop die file en pas de wijzigingen handmatig toe in:
+De geïnstalleerde library moet op een aantal plekken aangepast worden
+(crypto-import, fractionele hoeveelheden, performance-grafiek). Dat doet een
+patch, je hoeft niets handmatig te wijzigen:
 
+```powershell
+python -m my_portfolio.scripts.apply_library_patches
 ```
-.venv\Lib\site-packages\degiro_portfolio\
+
+Vereist `git` in je PATH (alleen gebruikt als patch-tool; het script werkt
+ook binnen de projectrepo waar `.venv` in staat).
+
+Het script:
+
+- weigert te draaien als `degiro_portfolio` niet exact versie 0.5.13 is;
+- controleert eerst of de patch schoon past en past dan alles-of-niets toe;
+- is idempotent: nogmaals draaien meldt "al toegepast" en doet niets;
+- laat de library ongemoeid als de patch niet past (exit code 1).
+
+Andere modi:
+
+```powershell
+python -m my_portfolio.scripts.apply_library_patches --check    # status; exit 0 = toegepast
+python -m my_portfolio.scripts.apply_library_patches --revert   # terugdraaien
 ```
+
+De patch staat in [`patches/degiro_portfolio-0.5.13.patch`](patches/degiro_portfolio-0.5.13.patch).
+Wat erin zit (leesbaar overzicht: [`docs/LIBRARY_CHANGES.md`](docs/LIBRARY_CHANGES.md)):
 
 | Bestand | Wijziging |
 |---|---|
@@ -60,21 +80,24 @@ Doorloop die file en pas de wijzigingen handmatig toe in:
 | `import_data.py` | `int(quantity)` → `float(quantity)` |
 | `fetch_prices.py` | startdatum 10 dagen vóór eerste transactie |
 | `main.py` | `int(qty)` weg, `timedelta`-import, 10 dagen extra prijshistorie |
-| `static\index.html` | performance-grafiek + markers voor nieuwe investeringen |
+| `static/index.html` | performance-grafiek + markers voor nieuwe investeringen |
 | `ticker_resolver.py` | `resolve_crypto_ticker` + crypto-pad in `get_ticker_for_stock` |
 
-Controle dat de installatie overeenkomt met `LIBRARY_CHANGES.md` (vereist
-internet; exit code 1 is hier normaal, want er *zijn* verschillen):
+Optionele controle dat de gepatchte library overeenkomt met
+`docs/LIBRARY_CHANGES.md` (vereist internet; exit code 1 is normaal, want er
+*zijn* verschillen met PyPI):
 
 ```powershell
-python -m my_portfolio.scripts.audit_library_changes --out $env:TEMP\check.md
+python -m my_portfolio.scripts.audit_library_changes --out docs\check.md
+git diff --no-index --stat docs\LIBRARY_CHANGES.md docs\check.md
 ```
 
-Vergelijk `$env:TEMP\check.md` met `docs/LIBRARY_CHANGES.md`: die moeten
-inhoudelijk gelijk zijn.
+Geen output van `git diff` = identiek (alleen de regel met het lokale pad
+mag verschillen). Verwijder `docs\check.md` daarna.
 
-> Patches verdwijnen bij `pip install --upgrade degiro_portfolio` of een
-> verse venv. Na elke herinstallatie stap 4 herhalen.
+> Na `pip install --upgrade degiro_portfolio`, `--force-reinstall` of een
+> nieuwe venv zijn de patches weg: stap 4 opnieuw draaien. Een nieuwere
+> library-versie wordt door het script geweigerd tot er een patch voor is.
 
 ### 5. Starten
 
