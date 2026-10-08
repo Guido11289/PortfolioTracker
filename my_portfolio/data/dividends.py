@@ -47,12 +47,22 @@ def fetch_dividend_data(ticker: str) -> dict:
 
     currency = info.get("currency")
     history = []
-    dividend_yield = info.get("dividendYield")
 
+    # Crypto betaalt geen dividend.
+    # Yahoo kan voor sommige crypto-tickers toch een dividendYield
+    # teruggeven; die mag niet als aandeeldividend worden gebruikt.
+    quote_type = info.get("quoteType")
+    print(f"DEBUG: {ticker} quoteType={quote_type}, dividendYield={info.get('dividendYield')}")
+    if quote_type == "CRYPTOCURRENCY":
+        return {
+            "history": history,
+            "dividend_yield": None,
+            "currency": currency,
+        }
+
+    dividend_yield = info.get("dividendYield")
     if dividends is not None and not dividends.empty:
         dividend_yield = float(dividend_yield) / 100
-
-
 
         for ts, amount in dividends.items():
             if amount is None:
@@ -102,7 +112,6 @@ def sync_dividend_history(core_db, personal_db, force: bool = False) -> dict:
             # sync-samenvatting, net als bij de andere providers.
             failed += 1
             continue
-
         if data["history"]:
             if force:
                 personal_db.query(DividendPayment).filter_by(stock_id=stock.id).delete()

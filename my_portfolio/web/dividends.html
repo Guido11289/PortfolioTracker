@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dividenden — DEGIRO Portfolio</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -113,7 +114,10 @@
             <div class="value" id="estimate-total">€ —</div>
         </div>
     </div>
-
+    <div class="panel">
+        <h2>Dividend per maand</h2>
+        <div id="chart-monthly"></div>
+    </div>
     <div class="panel">
         <h2>Schatting per holding</h2>
         <table id="estimate-table"></table>
@@ -182,6 +186,28 @@
                     <td>${fmtEur(p.amount_eur)}</td>
                 </tr>`).join('');
         }
+        
+        async function loadMonthlyChart() {
+            if (typeof Plotly === 'undefined') {
+                throw new Error('Plotly.js kon niet geladen worden (CDN onbereikbaar?)');
+            }
+
+            const year = document.getElementById('year-select').value;
+            const res = await fetch(`/api/personal/dividend-monthly/chart?year=${year}`);
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status} op dividend-monthly/chart`);
+            }
+
+            const fig = await res.json();
+
+            Plotly.react(
+                'chart-monthly',
+                fig.data,
+                fig.layout,
+                { responsive: true }
+            );
+        }
 
         async function loadEstimate() {
             const res = await fetch('/api/personal/dividend-estimate');
@@ -208,7 +234,11 @@
 
         async function loadAll() {
             try {
-                await Promise.all([loadAnnualTotal(), loadCalendar()]);
+                await Promise.all([
+                    loadAnnualTotal(),
+                    loadCalendar(),
+                    loadMonthlyChart()
+                ]);
             } catch (err) {
                 showError('ophalen van de dividendkalender', err);
             }
@@ -221,7 +251,11 @@
 
         document.getElementById('year-select').addEventListener('change', async () => {
             try {
-                await Promise.all([loadAnnualTotal(), loadCalendar()]);
+                await Promise.all([
+                    loadAnnualTotal(),
+                    loadCalendar(),
+                    loadMonthlyChart()
+                ]);
             } catch (err) {
                 showError('ophalen van de dividendkalender', err);
             }
