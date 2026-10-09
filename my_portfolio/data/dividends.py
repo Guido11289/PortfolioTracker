@@ -17,82 +17,77 @@ from degiro_portfolio.price_fetchers import yahoo_rate_limiter
 
 logger = logging.getLogger(__name__)
 
-
 def fetch_dividend_data(ticker: str) -> dict:
-    """Eén Yahoo-sessie per aandeel (één yf.Ticker-object, één
-    rate-limiter-wait) voor zowel de dividendhistorie als de huidige
-    trailing dividend_yield — twee aparte properties van hetzelfde object,
-    analoog aan hoe sector_provider.py meerdere fund-properties van één
-    object leest na één wait.
-
-    Geeft {"history": [(datetime, bedrag_per_aandeel, currency), ...],
-    "dividend_yield": float|None, "currency": str|None} terug. Lege
-    history is normaal voor aandelen zonder dividend (geen fout)."""
+    """Eén Yahoo-sessie per aandeel voor dividendhistorie én trailing
+    dividend_yield. Geeft {"history": [(datetime, bedrag, currency), ...],
+    "dividend_yield": fractie|None, "currency": str|None}. Lege history is
+    normaal voor aandelen zonder dividend."""
     import yfinance as yf
 
     yahoo_rate_limiter.wait_if_needed()
     t = yf.Ticker(ticker)
-
     try:
         info = t.info
     except Exception as e:
         logger.warning("Kon info niet ophalen voor %s: %s", ticker, e)
         info = {}
 
+    returned = str(info.get("symbol") or "").upper()
+    if returned and returned != ticker.upper():
+        logger.error("Yahoo gaf data voor '%s' terug terwijl '%s' was opgevraagd — genegeerd.", returned, ticker)
+        return {"history": [], "dividend_yield": None, "currency": None}
+    
     try:
-        dividends = t.dividends  # pandas Series: index=ex-datum, waarde=bedrag/aandeel
+        dividends = t.dividends
     except Exception as e:
         logger.warning("Kon dividendhistorie niet ophalen voor %s: %s", ticker, e)
         dividends = None
+        
 
     currency = info.get("currency")
+    # Yahoo's info["dividendYield"] is een percentage (0.41 = 0.41%) -> fractie.
+    raw_yield = info.get("dividendYield")
+    dividend_yield = float(raw_yield) / 100 if raw_yield is not None else None
+
     history = []
-
-    # Crypto betaalt geen dividend.
-    # Yahoo kan voor sommige crypto-tickers toch een dividendYield
-    # teruggeven; die mag niet als aandeeldividend worden gebruikt.
-    quote_type = info.get("quoteType")
-    print(f"DEBUG: {ticker} quoteType={quote_type}, dividendYield={info.get('dividendYield')}")
-    if quote_type == "CRYPTOCURRENCY":
-        return {
-            "history": history,
-            "dividend_yield": None,
-            "currency": currency,
-        }
-
-    dividend_yield = info.get("dividendYield")
     if dividends is not None and not dividends.empty:
-        dividend_yield = float(dividend_yield) / 100
-
         for ts, amount in dividends.items():
             if amount is None:
                 continue
             history.append((ts.to_pydatetime(), float(amount), currency))
 
-    return {
-        "history": history,
-        "dividend_yield": dividend_yield,
-        "currency": currency,
-    }
+    return {"history": history, "dividend_yield": dividend_yield, "currency": currency}
 
 
 def sync_dividend_history(core_db, personal_db, force: bool = False) -> dict:
     """Vult DividendPayment (historie) en StockDividendInfo (yield) voor
-    alle stocks met een yahoo_ticker. Net als sync_sector_metadata: een
-    aandeel wordt alleen overgeslagen als het ZOWEL al uitkeringshistorie
-    ALS een yield-record heeft — anders blijft de yield onbekend voor
-    aandelen die al gesynchroniseerd waren vóór StockDividendInfo bestond."""
+    alle niet-crypto stocks met een yahoo_ticker. Een aandeel wordt alleen
+    overgeslagen als het ZOWEL historie ALS een yield-record heeft.
+    Crypto wordt nooit opgehaald; bij force=True worden eerder foutief
+    opgeslagen crypto-dividendrecords verwijderd."""
     from degiro_portfolio.database import Stock
-    from ..models import DividendPayment, StockDividendInfo
+    from ..models import DividendPayment, StockDividendInfo, StockInstrumentType
 
     stocks = core_db.query(Stock).all()
     stocks_with_history = {
         row[0] for row in personal_db.query(DividendPayment.stock_id).distinct().all()
     }
     existing_info = {i.stock_id: i for i in personal_db.query(StockDividendInfo).all()}
+    crypto_types = {
+        t.stock_id for t in personal_db.query(StockInstrumentType)
+        .filter(StockInstrumentType.quote_type == "CRYPTOCURRENCY")
+    }
 
     updated, skipped, failed = 0, 0, 0
     for stock in stocks:
+        is_crypto = stock.id in crypto_types or bool(stock.isin and stock.isin.startswith("CRYPTO:"))
+        if is_crypto:
+            if force:
+                personal_db.query(DividendPayment).filter_by(stock_id=stock.id).delete()
+                personal_db.query(StockDividendInfo).filter_by(stock_id=stock.id).delete()
+            skipped += 1
+            continue
+
         has_history = stock.id in stocks_with_history
         has_info = stock.id in existing_info
         if has_history and has_info and not force:
@@ -105,13 +100,10 @@ def sync_dividend_history(core_db, personal_db, force: bool = False) -> dict:
 
         data = fetch_dividend_data(stock.yahoo_ticker)
         if not data["history"] and data["dividend_yield"] is None:
-            # Geen uitkeringen ooit én geen yield bekend — kan een normaal
-            # niet-dividend-uitkerend aandeel zijn, maar kan ook een
-            # mislukte Yahoo-call zijn (info={} bij exception). We loggen
-            # het als "failed" zodat dat onderscheid zichtbaar blijft in de
-            # sync-samenvatting, net als bij de andere providers.
+            # Normaal niet-uitkerend aandeel, of mislukte Yahoo-call (info={}).
             failed += 1
             continue
+
         if data["history"]:
             if force:
                 personal_db.query(DividendPayment).filter_by(stock_id=stock.id).delete()

@@ -11,6 +11,7 @@ from ..analysis.dividends import (
     compute_dividend_calendar,
     compute_annual_total,
     compute_monthly_dividends,
+    compute_monthly_dividend_forecast,
     estimate_upcoming_annual_dividend,
 )
 from ..data.dividends import sync_dividend_history
@@ -60,8 +61,19 @@ def dividend_monthly_chart(
     personal_db: Session = Depends(get_personal_db),
 ):
     response.headers["Cache-Control"] = "no-store"
-    return build_monthly_dividend_figure(compute_monthly_dividends(core_db, personal_db, year), year)
+    actual = compute_monthly_dividends(core_db, personal_db, year, )
+    forecast = compute_monthly_dividend_forecast(core_db, personal_db, year,)
+    return build_monthly_dividend_figure(actual, forecast, year,)
 
+@router.get("/dividend-monthly/forecast")
+def dividend_monthly_forecast(
+    response: Response,
+    year: int,
+    core_db: Session = Depends(get_db),
+    personal_db: Session = Depends(get_personal_db),
+):
+    response.headers["Cache-Control"] = "no-store"
+    return {"year": year, "months": compute_monthly_dividend_forecast(core_db, personal_db, year)}
 
 @router.get("/dividend-estimate")
 def dividend_estimate(
@@ -86,3 +98,4 @@ def sync_dividends_endpoint(
     """Haalt dividendhistorie + yield op via Yahoo. Kan traag zijn door de
     Yahoo rate-limiter (~3s per aandeel)."""
     return sync_dividend_history(core_db, personal_db, force=force)
+

@@ -17,7 +17,10 @@ import pytest
 
 from degiro_portfolio.database import init_db, SessionLocal, Stock, Transaction, StockPrice, ExchangeRate
 from my_portfolio.database import init_personal_db, PersonalSessionLocal
-from my_portfolio.models import StockMetadata, StockSectorWeight, StockInstrumentType, WatchlistStock, StockFundamentals, WatchlistStockPrice
+from my_portfolio.models import (
+    StockMetadata, StockSectorWeight, StockInstrumentType, WatchlistStock,
+    StockFundamentals, WatchlistStockPrice, DividendPayment, StockDividendInfo,
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -25,6 +28,8 @@ def _setup_database():
     init_db()
     init_personal_db()
     yield
+    from degiro_portfolio.database import engine
+    engine.dispose()  # Windows: bestand kan niet weg zolang de pool connecties vasthoudt
     os.remove(_TMP_DB_PATH)
 
 
@@ -46,7 +51,8 @@ def personal_db():
     session = PersonalSessionLocal()
     yield session
     session.rollback()
-    for model in (StockSectorWeight, StockMetadata, StockInstrumentType, WatchlistStockPrice, StockFundamentals, WatchlistStock):
+    for model in (StockSectorWeight, StockMetadata, StockInstrumentType, WatchlistStockPrice,
+                  StockFundamentals, WatchlistStock, DividendPayment, StockDividendInfo):
         session.query(model).delete()
     session.commit()
     session.close()
