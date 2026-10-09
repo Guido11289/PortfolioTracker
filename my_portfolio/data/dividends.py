@@ -80,7 +80,10 @@ def sync_dividend_history(core_db, personal_db, force: bool = False) -> dict:
 
     updated, skipped, failed = 0, 0, 0
     for stock in stocks:
-        is_crypto = stock.id in crypto_types or bool(stock.isin and stock.isin.startswith("CRYPTO:"))
+        has_real_isin = bool(stock.isin and str(stock.isin).strip() and not stock.isin.startswith("CRYPTO:"))
+        is_crypto = bool(stock.isin and stock.isin.startswith("CRYPTO:")) or (
+            not has_real_isin and stock.id in crypto_types
+        )        
         if is_crypto:
             if force:
                 personal_db.query(DividendPayment).filter_by(stock_id=stock.id).delete()

@@ -116,6 +116,19 @@
     </div>
     <div class="panel">
         <h2>Dividend per maand</h2>
+        <div id="forecast-mode" style="margin-bottom:12px;font-size:0.85em;color:#2d3748;">
+            <div style="color:#718096;text-transform:uppercase;font-size:0.75em;letter-spacing:0.03em;margin-bottom:6px;">Verwachting</div>
+            <label style="display:block;margin-bottom:4px;cursor:pointer;">
+                <input type="radio" name="forecast-mode" value="median" checked>
+                <b>Gemiddeld</b>
+                <span style="color:#718096;">— mediaan van je betalingen uit de laatste 365 dagen; speciale dividenden worden gedempt</span>
+            </label>
+            <label style="display:block;cursor:pointer;">
+                <input type="radio" name="forecast-mode" value="seasonal">
+                <b>Seizoensgebonden</b>
+                <span style="color:#718096;">— bedrag van dezelfde maand vorig jaar (meerdere betalingen opgeteld); speciale dividenden komen terug</span>
+            </label>
+        </div>
         <div id="chart-monthly"></div>
     </div>
     <div class="panel">
@@ -193,8 +206,8 @@
             }
 
             const year = document.getElementById('year-select').value;
-            const res = await fetch(`/api/personal/dividend-monthly/chart?year=${year}`);
-
+            const seasonal = document.querySelector('input[name="forecast-mode"]:checked').value === 'seasonal';
+            const res = await fetch(`/api/personal/dividend-monthly/chart?year=${year}&seasonal=${seasonal}`);
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status} op dividend-monthly/chart`);
             }
@@ -248,7 +261,11 @@
                 showError('ophalen van de schatting', err);
             }
         }
-
+        document.querySelectorAll('input[name="forecast-mode"]').forEach(radio => {
+            radio.addEventListener('change', async () => {
+                try { await loadMonthlyChart(); } catch (err) { showError('ophalen van de grafiek', err); }
+            });
+        });
         document.getElementById('year-select').addEventListener('change', async () => {
             try {
                 await Promise.all([

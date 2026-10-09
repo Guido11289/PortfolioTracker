@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from degiro_portfolio.database import get_db
 
+from my_portfolio.tests.conftest import core_db
+
 from ..database import get_personal_db
 from ..analysis.dividends import (
     compute_dividend_calendar,
@@ -52,28 +54,29 @@ def dividend_monthly(
     response.headers["Cache-Control"] = "no-store"
     return {"year": year, "months": compute_monthly_dividends(core_db, personal_db, year)}
 
-
 @router.get("/dividend-monthly/chart")
 def dividend_monthly_chart(
     response: Response,
     year: int,
+    seasonal: bool = False,
     core_db: Session = Depends(get_db),
     personal_db: Session = Depends(get_personal_db),
 ):
     response.headers["Cache-Control"] = "no-store"
-    actual = compute_monthly_dividends(core_db, personal_db, year, )
-    forecast = compute_monthly_dividend_forecast(core_db, personal_db, year,)
-    return build_monthly_dividend_figure(actual, forecast, year,)
+    actual = compute_monthly_dividends(core_db, personal_db, year)
+    forecast = compute_monthly_dividend_forecast(core_db, personal_db, year, seasonal=seasonal)
+    return build_monthly_dividend_figure(actual, forecast, year)
 
 @router.get("/dividend-monthly/forecast")
 def dividend_monthly_forecast(
     response: Response,
     year: int,
+    seasonal: bool = False,
     core_db: Session = Depends(get_db),
     personal_db: Session = Depends(get_personal_db),
 ):
     response.headers["Cache-Control"] = "no-store"
-    return {"year": year, "months": compute_monthly_dividend_forecast(core_db, personal_db, year)}
+    return {"year": year, "months": compute_monthly_dividend_forecast(core_db, personal_db, year, seasonal=seasonal)}
 
 @router.get("/dividend-estimate")
 def dividend_estimate(

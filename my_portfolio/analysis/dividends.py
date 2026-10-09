@@ -199,13 +199,20 @@ def estimate_upcoming_annual_dividend(core_db: Session, personal_db: Session) ->
 
     result.sort(key=lambda r: r["estimated_annual_dividend_eur"], reverse=True)
     return result
-def compute_monthly_dividend_forecast(core_db: Session, personal_db: Session, year: int) -> list[dict]:
+def compute_monthly_dividend_forecast(
+    core_db: Session, personal_db: Session, year: int,
+    seasonal: bool = False, today: Optional["date"] = None,
+) -> list[dict]:
     """Prognose van nog te ontvangen dividend per maand (EUR) voor `year`.
 
     Per huidige, niet-crypto holding met betalingen in de laatste 365 dagen:
     - betaalmaanden = de maanden waarin in die 365 dagen betaald is;
     - bedrag per betaling = mediaan van die betalingen (robuust tegen
       speciale uitkeringen) x huidige qty x laatst bekende wisselkoers;
+    - seasonal=True: bedrag per share = SOM van de betalingen in dezelfde
+      kalendermaand van year-1 (dekt meerdere betalingen in één maand);
+      ontbreekt die, dan de mediaan. Een speciaal dividend uit year-1 komt
+      dus in die maand terug.
     - alleen toekomstige maanden (huidige maand inbegrepen) en alleen als
       voor die stock die maand nog geen werkelijke betaling is ontvangen.
     Verleden jaren geven alleen nullen terug.
@@ -214,7 +221,7 @@ def compute_monthly_dividend_forecast(core_db: Session, personal_db: Session, ye
     from datetime import date, datetime, timedelta
     from statistics import median
 
-    today = date.today()
+    today = today or date.today()
     empty = [{"month": m, "total_eur": 0.0, "payments": []} for m in range(1, 13)]
     if year < today.year:
         return empty
@@ -233,15 +240,21 @@ def compute_monthly_dividend_forecast(core_db: Session, personal_db: Session, ye
         return empty
     stocks_by_id = {s.id: s for s, _ in holdings if s.id in current_qty}
 
-    window_start = datetime.now() - timedelta(days=365)
-    payments_by_stock = defaultdict(list)
+    window_start = datetime.combine(today, datetime.min.time()) - timedelta(days=365)
+    query_start = min(window_start, datetime(year - 1, 1, 1)) if seasonal else window_start
+
+    payments_by_stock = defaultdict(list)       # alleen binnen het 365-dagenvenster
+    prev_year_sum = defaultdict(float)          # (stock_id, maand) -> som per share in year-1
     for p in (
         personal_db.query(DividendPayment)
-        .filter(DividendPayment.payment_date >= window_start,
+        .filter(DividendPayment.payment_date >= query_start,
                 DividendPayment.stock_id.in_(current_qty.keys()))
         .order_by(DividendPayment.payment_date)
     ):
-        payments_by_stock[p.stock_id].append(p)
+        if p.payment_date >= window_start:
+            payments_by_stock[p.stock_id].append(p)
+        if seasonal and p.payment_date.year == year - 1 and p.amount_per_share and p.amount_per_share > 0:
+            prev_year_sum[(p.stock_id, p.payment_date.month)] += p.amount_per_share
 
     # Al ontvangen (stock, maand)-combinaties in `year`: niet nogmaals voorspellen.
     received = {
@@ -260,12 +273,14 @@ def compute_monthly_dividend_forecast(core_db: Session, personal_db: Session, ye
 
         currency = payments[-1].currency or stock.currency
         rate = rates.get(currency, _get_fallback_rate(currency))
-        amount_eur = round(current_qty[stock_id] * median(amounts) * rate, 2)
-        if amount_eur <= 0:
-            continue
+        median_amount = median(amounts)
 
         for month in sorted({p.payment_date.month for p in payments}):
-            if month in future_months and (stock_id, month) not in received:
+            if month not in future_months or (stock_id, month) in received:
+                continue
+            per_share = (prev_year_sum.get((stock_id, month)) if seasonal else None) or median_amount
+            amount_eur = round(current_qty[stock_id] * per_share * rate, 2)
+            if amount_eur > 0:
                 monthly[month].append({"name": stock.name, "amount_eur": amount_eur})
 
     result = []
