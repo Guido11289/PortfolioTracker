@@ -116,6 +116,7 @@ zonder de extensie.
 | `/personal` | Sectorweging (stocks / ETF's / totaal) |
 | `/watchlist` | Watchlist met fundamentals- en koersfilters |
 | `/docs` | Swagger UI (incl. `/api/personal/*`) |
+| `/dividends` | Dividenden: jaartotaal, maandgrafiek (werkelijk + verwachting), schatting per holding |
 
 ## Eerste gebruik
 

@@ -24,17 +24,19 @@ from degiro_portfolio.main import _compute_price_scales, _get_fallback_rate
 
 from ..models import DividendPayment, StockDividendInfo, StockInstrumentType
 
+
 def _crypto_stock_ids(personal_db: Session, stocks) -> set:
-    """stock_id's van crypto-holdings: synthetische CRYPTO:-ISIN of
-    quoteType CRYPTOCURRENCY (zelfde twee criteria als sector_allocation.py)."""
+    """Crypto = synthetische CRYPTO:-ISIN, of quoteType CRYPTOCURRENCY voor
+    stocks ZONDER ISIN. Een echt ISIN wint van quote_type (een fout
+    opgeslagen quote_type wiste eerder ETF-dividenddata)."""
     stocks = list(stocks)
     ids = {s.id for s in stocks if s.isin and s.isin.startswith("CRYPTO:")}
-    rest = [s.id for s in stocks if s.id not in ids]
-    if rest:
+    no_isin = [s.id for s in stocks if not (s.isin and str(s.isin).strip())]
+    if no_isin:
         ids |= {
             t.stock_id
             for t in personal_db.query(StockInstrumentType).filter(
-                StockInstrumentType.stock_id.in_(rest),
+                StockInstrumentType.stock_id.in_(no_isin),
                 StockInstrumentType.quote_type == "CRYPTOCURRENCY",
             )
         }
