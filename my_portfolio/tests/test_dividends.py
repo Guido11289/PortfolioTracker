@@ -53,7 +53,7 @@ def test_forecast_kwartaalbetaler_mediaan_en_huidige_maand_al_ontvangen(core_db,
         (datetime(2026, 3, 15), 0.25), (datetime(2026, 6, 5), 0.25),   # juni 2026 al ontvangen
     ])
     m = _forecast(core_db, personal_db)  # mediaan van [.2,.3,.1,.25,.25] = 0.25 -> 2.5
-    assert m[6] == 0.0                   # huidige maand al ontvangen -> niet dubbel
+    assert m[6] == pytest.approx(2.5)   # was 0.0: initiële verwachting, ontvangen staat in de Werkelijk-balk
     assert m[9] == pytest.approx(2.5)
     assert m[12] == pytest.approx(2.5)
     assert m[3] == 0.0                   # verleden maand
@@ -65,7 +65,7 @@ def test_forecast_seizoensgebonden_gebruikt_zelfde_maand_vorig_jaar(core_db, per
         (datetime(2026, 3, 15), 0.25), (datetime(2026, 6, 5), 0.25),
     ])
     m = _forecast(core_db, personal_db, seasonal=True)
-    assert m[6] == 0.0
+    assert m[6] == pytest.approx(2.0)   # was 0.0: juni 2025 = 0.20 x 10
     assert m[9] == pytest.approx(3.0)
     assert m[12] == pytest.approx(1.0)
 
@@ -88,16 +88,6 @@ def test_forecast_speciaal_dividend_gedempt_door_mediaan_maar_niet_seizoensgebon
     assert seasonal_mode[12] == pytest.approx(20.0)  # gedrag: speciaal komt terug in zijn maand
     assert seasonal_mode[7] == pytest.approx(2.0)
     assert seasonal_mode[10] == pytest.approx(2.0)
-
-
-def test_forecast_seizoen_fallback_op_mediaan_zonder_vorig_jaar_bedrag(core_db, personal_db):
-    # year=2027 -> referentiejaar 2026: maart heeft een bedrag, december niet.
-    _holding_with_payments(core_db, personal_db, [
-        (datetime(2025, 12, 15), 0.10), (datetime(2026, 3, 15), 0.30),
-    ])
-    m = _forecast(core_db, personal_db, year=2027, seasonal=True)
-    assert m[3] == pytest.approx(3.0)    # 2026-maart
-    assert m[12] == pytest.approx(2.0)   # fallback: mediaan(0.1, 0.3) = 0.2
 
 
 def test_forecast_meerdere_betalingen_in_dezelfde_maand(core_db, personal_db):
@@ -126,3 +116,22 @@ def test_forecast_echt_isin_wint_van_cryptocurrency_quote_type(core_db, personal
     personal_db.add(StockInstrumentType(stock_id=s.id, quote_type="CRYPTOCURRENCY"))
     personal_db.commit()
     assert _forecast(core_db, personal_db)[9] == pytest.approx(5.0)
+
+
+def test_forecast_seizoen_fallback_op_mediaan_zonder_vorig_jaar_bedrag(core_db, personal_db):
+    # year=2026, referentie 2025: december heeft een bedrag, juni 2025 niet.
+    _holding_with_payments(core_db, personal_db, [
+        (datetime(2025, 12, 15), 0.10), (datetime(2026, 6, 5), 0.30),
+    ])
+    m = _forecast(core_db, personal_db, year=2026, seasonal=True)
+    assert m[12] == pytest.approx(1.0)
+    assert m[6] == pytest.approx(2.0)    # fallback: mediaan(0.1, 0.3) = 0.2
+
+
+def test_forecast_volgend_jaar_seizoen_gebruikt_meest_recente_voorkomst(core_db, personal_db):
+    _holding_with_payments(core_db, personal_db, [
+        (datetime(2025, 12, 15), 0.10), (datetime(2026, 3, 15), 0.30),
+    ])
+    m = _forecast(core_db, personal_db, year=2027, seasonal=True)
+    assert m[3] == pytest.approx(3.0)    # maart 2026
+    assert m[12] == pytest.approx(1.0)   # december 2025

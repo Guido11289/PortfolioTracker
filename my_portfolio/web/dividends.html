@@ -73,7 +73,8 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); margin-bottom: 16px; overflow-x: auto;
         }
         .panel h2 { color: #2d3748; font-size: 1.1em; margin-bottom: 14px; }
-
+        #chart-monthly { width: 100%; height: 400px; }
+        
         table { border-collapse: collapse; width: 100%; }
         th {
             text-align: left; padding: 10px 14px; color: #718096; font-size: 0.75em;
@@ -155,12 +156,11 @@
         function fmtEur(v) {
             return v == null ? '€ —' : '€ ' + v.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
-
         function populateYearSelect() {
             const select = document.getElementById('year-select');
             const nowYear = new Date().getFullYear();
             select.innerHTML = '';
-            for (let y = nowYear; y >= nowYear - 9; y--) {
+            for (let y = nowYear + 1; y >= nowYear - 9; y--) {
                 const opt = document.createElement('option');
                 opt.value = y;
                 opt.textContent = y;
@@ -168,7 +168,6 @@
             }
             select.value = nowYear;
         }
-
         async function loadAnnualTotal() {
             const year = document.getElementById('year-select').value;
             const res = await fetch(`/api/personal/dividend-annual-total?year=${year}`);
@@ -213,13 +212,13 @@
             }
 
             const fig = await res.json();
-
-            Plotly.react(
+            fig.layout = Object.assign({}, fig.layout, { height: 400, autosize: true });
+            await Plotly.react(
                 'chart-monthly',
-                fig.data,
-                fig.layout,
-                { responsive: true }
-            );
+                fig.data, 
+                fig.layout, 
+                { responsive: true });
+            Plotly.Plots.resize('chart-monthly');
         }
 
         async function loadEstimate() {
