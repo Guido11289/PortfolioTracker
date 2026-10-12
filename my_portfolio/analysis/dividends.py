@@ -19,6 +19,9 @@ from typing import Optional
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
+from datetime import date, datetime, timedelta
+from typing import Optional
+
 from degiro_portfolio.database import Stock, Transaction, StockPrice, ExchangeRate
 from degiro_portfolio.main import _compute_price_scales, _get_fallback_rate
 
@@ -220,7 +223,6 @@ def compute_monthly_dividend_forecast(
     Verleden jaren geven alleen nullen terug.
     """
     from collections import defaultdict
-    from datetime import date, datetime, timedelta
     from statistics import median
 
     today = today or date.today()
