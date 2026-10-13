@@ -132,16 +132,6 @@ def compute_monthly_dividends(core_db: Session, personal_db: Session, year: int)
             "payments": payments,
         })
     return result
-# def compute_monthly_dividends(core_db: Session, personal_db: Session, year: int) -> list[dict]:
-#     """Ontvangen dividend per maand (EUR) voor `year`: altijd 12 rijen,
-#     lege maanden = 0. Aggregeert compute_dividend_calendar(), dus dezelfde
-#     qty-op-ex-datum- en FX-logica (geen tweede berekening)."""
-#     from datetime import datetime
-
-#     totals = [0.0] * 12
-#     for row in compute_dividend_calendar(core_db, personal_db, year=year):
-#         totals[datetime.fromisoformat(row["payment_date"]).month - 1] += row["amount_eur"]
-#     return [{"month": i + 1, "total_eur": round(t, 2)} for i, t in enumerate(totals)]
 
 def estimate_upcoming_annual_dividend(core_db: Session, personal_db: Session) -> list[dict]:
     """dividend_yield x huidige waarde, per huidige niet-crypto holding.

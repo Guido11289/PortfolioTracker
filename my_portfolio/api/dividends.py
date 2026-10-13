@@ -6,8 +6,6 @@ from sqlalchemy.orm import Session
 
 from degiro_portfolio.database import get_db
 
-from my_portfolio.tests.conftest import core_db
-
 from ..database import get_personal_db
 from ..analysis.dividends import (
     compute_dividend_calendar,
